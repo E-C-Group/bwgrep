@@ -1,0 +1,66 @@
+#!/bin/sh -
+## Tool for "grep"ing through the entries in BroadWorks XSLog output
+## Usage: xsloggrep [-v] PATTERN [FILE]
+##    PATTERN is something to search for in the entries or header lines
+##    FILE is an XSLog file; can be "-" for standard input
+##    -v inverts the sense of the search (only returns entries that don't match)
+##
+## (C) ECG, Inc.; lindsey@e-c-group.com, Thu Nov 16 10:41:14 EST 2006
+##
+## Version 2 -- Updated to better handle log entries that include blank lines; e.g., SIP followed by SDP Wed Feb  4 13:01:39 EST 2009
+##
+
+if [ -z "$1" ]; then
+  (
+  echo "Usage: `basename $0` [-v] REGEX [FILES...]"
+  echo;
+  echo "Show BroadWorks XSLog-style entries that match the specified regular experssion."
+  echo;
+  echo "Options:"
+  echo "  -v Match all log entries that do NOT match REGEX"
+  ) 1>&2
+  exit 1
+fi
+
+
+
+awk="awk"
+test `uname -s` = "SunOS" && awk="nawk"
+
+if [ "$1" = "-v" ]; then
+  ## Invert the sense of the search
+  regex_match_operator="!~"
+  grouping_operator="&&"
+  shift
+else
+  regex_match_operator="~"
+  grouping_operator="||"
+fi
+
+regex="${1}"
+shift
+
+${awk} 'BEGIN{RS="" ; }
+{
+  if ($0 ~ /^[0-9][0-9][0-9][0-9]\.[0-9][0-9]\.[0-9][0-9] .*\|.*\|/) {
+    ## This line is an entry header line similar to one of these --
+    ## 2006.11.15 15:07:40:913 EST | Info   | Accounting
+    ## 2006.11.15 15:07:40:948 EST | Info   | Sip | +12489961998 | localHost78744:1
+    header_line=$0
+    last_entry_was_header_line=1
+    last_entry_matched=0
+  } else if ( ( ! last_entry_was_header_line && last_entry_matched ) || ( ($0 '"${regex_match_operator}"' /'"${regex}"'/) '"${grouping_operator}"' (header_line '"${regex_match_operator}"' /'"${regex}"'/) ) ) {
+    if (last_entry_was_header_line) {
+      print header_line "\n"
+    }
+
+    print $0 "\n"
+
+    last_entry_was_header_line=0
+    last_entry_matched=1
+  } else {
+    last_entry_was_header_line=0
+    last_entry_matched=0
+  }
+}
+' ${*}
